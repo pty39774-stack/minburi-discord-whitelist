@@ -10,7 +10,20 @@ app.use(express.json());
 
 const GUILD_ID = "1546857600904335431";
 const ROLE_ID = "1547211919285297174";
+async function checkWhitelist(discordUserId) {
+  try {
+    const guild = await client.guilds.fetch(GUILD_ID);
+    const member = await guild.members.fetch({
+      user: discordUserId,
+      force: true
+    });
 
+    return member.roles.cache.has(ROLE_ID);
+  } catch (error) {
+    console.error("Whitelist check failed:", error.message);
+    return false;
+  }
+}
 const {
   DISCORD_BOT_TOKEN,
   DISCORD_CLIENT_ID,
