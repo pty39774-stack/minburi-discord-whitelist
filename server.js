@@ -169,15 +169,32 @@ if (!tokenResponse.ok) {
     }
 
     const discordUser = await userResponse.json();
+const safeUsername = String(discordUser.username)
+  .replace(/[&<>"']/g, "");
 
+res.type("html").send(`
+  <!DOCTYPE html>
+  <html lang="th">
+  <head>
+    <meta charset="UTF-8">
+    <title>MINBURI ZONE</title>
+  </head>
+  <body>
+    <h2>MINBURI ZONE</h2>
+    <p>ยืนยัน Discord สำเร็จ: ${safeUsername}</p>
+    <p>ขั้นตอนต่อไป: เชื่อมบัญชี Roblox</p>
+    <p>ระบบกรอกรหัสเชื่อมบัญชีกำลังเตรียมใช้งาน</p>
+  </body>
+  </html>
+`);
     // ยังไม่เชื่อมกับ Roblox ID ในขั้นตอนนี้
-    res.send(
-      "Discord verified: " +
-      String(discordUser.username).replace(
-        /[&<>"']/g,
-        ""
-      )
-    );
+res.send(
+  "Discord verified: " +
+  String(discordUser.username).replace(
+    /[&<>"']/g,
+    ""
+  )
+);
   } catch (error) {
     console.error("OAuth error:", error.message);
     res.status(500).send("Discord verification failed");
