@@ -20,7 +20,10 @@ const {
 } = process.env;
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds]
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers
+  ]
 });
 
 // เก็บสถานะ OAuth ชั่วคราว
