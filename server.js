@@ -1,226 +1,81 @@
-
-require("dotenv").config();
-
-const express = require("express");
-const crypto = require("node:crypto");
-const { Client, GatewayIntentBits } = require("discord.js");
-
+require('dotenv').config();
+const express = require('express');
+const crypto = require('node:crypto');
+const { Client, GatewayIntentBits } = require('discord.js');
 const app = express();
-app.use(express.json());
-
-const GUILD_ID = "1546857600904335431";
-const ROLE_ID = "1547211919285297174";
-async function checkWhitelist(discordUserId) {
+app.use(express.json({ limit: '16kb' }));
+const { DISCORD_BOT_TOKEN, DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, DISCORD_REDIRECT_URI, ROBLOX_API_SECRET } = process.env;
+const GUILD_ID = '1546857600904335431';
+const ROLE_ID = '1547211919285297174';
+for (const k of ['DISCORD_BOT_TOKEN','DISCORD_CLIENT_ID','DISCORD_CLIENT_SECRET','DISCORD_REDIRECT_URI','ROBLOX_API_SECRET']) if (!process.env[k]) throw new Error('Missing '+k);
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
+const codes = new Map();
+const states = new Map();
+const linked = new Map(); // Demo only: Render restart clears links. Use a database for production.
+const now = () => Date.now();
+const clean = () => { for (const [k,v] of codes) if (v.expires < now()) codes.delete(k); for (const [k,v] of states) if (v.expires < now()) states.delete(k); };
+const secretOK = req => req.get('x-api-secret') === ROBLOX_API_SECRET;
+async function hasRole(discordId) {
+  if (!client.isReady()) return false;
   try {
     const guild = await client.guilds.fetch(GUILD_ID);
-    const member = await guild.members.fetch({
-      user: discordUserId,
-      force: true
-    });
-
+    const member = await guild.members.fetch({user: discordId, force: true});
     return member.roles.cache.has(ROLE_ID);
-  } catch (error) {
-    console.error("Whitelist check failed:", error.message);
-    return false;
-  }
+  } catch(e) { console.error('Role check failed:',e.message); return false; }
 }
-const {
-  DISCORD_BOT_TOKEN,
-  DISCORD_CLIENT_ID,
-  DISCORD_CLIENT_SECRET,
-  DISCORD_REDIRECT_URI,
-  ROBLOX_API_SECRET
-} = process.env;
-
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers
-  ]
+app.get('/', (_,res)=>res.send('MINBURI ZONE Whitelist Online'));
+app.get('/health',(_,res)=>res.json({online:true,discordReady:client.isReady()}));
+app.post('/api/link/start',(req,res)=>{
+  if (!secretOK(req)) return res.sendStatus(403);
+  const id = Number(req.body?.robloxUserId);
+  if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({error:'Invalid Roblox ID'});
+  clean();
+  for (const [k,v] of codes) if (v.robloxId === id) codes.delete(k);
+  const code = crypto.randomBytes(16).toString('hex');
+  codes.set(code,{robloxId:id,expires:now()+300000});
+  res.json({code,url:`${req.protocol}://${req.get('host')}/auth/discord?link_code=${code}`,expiresIn:300});
 });
-
-// เก็บสถานะ OAuth ชั่วคราว
-const pendingStates = new Map();
-
-app.get("/", (req, res) => {
-  res.send("MINBURI ZONE Whitelist Backend Online");
+app.get('/auth/discord',(req,res)=>{
+  clean();
+  const linkCode = String(req.query.link_code || '');
+  if (!codes.has(linkCode)) return res.status(400).send('Start linking from Roblox first.');
+  const state = crypto.randomBytes(24).toString('hex');
+  states.set(state,{linkCode,expires:now()+300000});
+  const qs = new URLSearchParams({client_id:DISCORD_CLIENT_ID,redirect_uri:DISCORD_REDIRECT_URI,response_type:'code',scope:'identify',state});
+  res.redirect('https://discord.com/oauth2/authorize?'+qs);
 });
-
-app.get("/health", (req, res) => {
-  res.json({
-    status: "online",
-    discordReady: client.isReady()
-  });
-});
-
-const linkCodes = new Map();
-
-app.post("/api/link/start", (req, res) => {
-  if (req.get("x-api-secret") !== ROBLOX_API_SECRET) {
-    return res.status(403).json({ error: "Forbidden" });
-  }
-
-  const robloxUserId = Number(req.body?.robloxUserId);
-
-  if (!Number.isSafeInteger(robloxUserId) || robloxUserId <= 0) {
-    return res.status(400).json({
-      error: "Invalid Roblox User ID"
-    });
-  }
-
-  const code = crypto.randomBytes(16).toString("hex");
-
-  linkCodes.set(code, {
-    robloxUserId,
-    expiresAt: Date.now() + 5 * 60 * 1000
-  });
-
-  res.json({
-    code,
-    expiresIn: 300
-  });
-});
-// เริ่มเชื่อมบัญชี Discord
-app.get("/auth/discord", (req, res) => {
-  const state = crypto.randomBytes(32).toString("hex");
-
-  pendingStates.set(state, Date.now() + 600000);
-
-  const params = new URLSearchParams({
-    client_id: DISCORD_CLIENT_ID,
-    redirect_uri: DISCORD_REDIRECT_URI,
-    response_type: "code",
-    scope: "identify",
-    state
-  });
-
-  res.redirect(
-    "https://discord.com/oauth2/authorize?" +
-    params.toString()
-  );
-});
-
-// รับผลการยืนยันตัวตนจาก Discord
-app.get("/auth/discord/callback", async (req, res) => {
-  const { code, state } = req.query;
-  const expires = pendingStates.get(state);
-
-  if (!code || !expires || Date.now() > expires) {
-    return res.status(400).send("Invalid or expired login");
-  }
-
-  pendingStates.delete(state);
-
+app.get('/auth/discord/callback',async(req,res)=>{
+  clean();
+  const state = String(req.query.state || '');
+  const record = states.get(state);
+  states.delete(state);
+  if (!record || !req.query.code) return res.status(400).send('Link expired. Start again in Roblox.');
+  const pending = codes.get(record.linkCode);
+  if (!pending) return res.status(400).send('Link expired. Start again in Roblox.');
   try {
-    const tokenResponse = await fetch(
-      "https://discord.com/api/v10/oauth2/token",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded"
-        },
-        body: new URLSearchParams({
-          client_id: DISCORD_CLIENT_ID,
-          client_secret: DISCORD_CLIENT_SECRET,
-          grant_type: "authorization_code",
-          code,
-          redirect_uri: DISCORD_REDIRECT_URI
-        })
-      }
-    );
-
-if (!tokenResponse.ok) {
-  const errorData = await tokenResponse.json();
-
-  console.error("Discord OAuth HTTP status:", tokenResponse.status);
-  console.error("Discord OAuth error:", JSON.stringify({
-    error: errorData.error ?? errorData.code ?? "unknown",
-    description: errorData.error_description ?? errorData.message ?? "No description"
-  }));
-
-  throw new Error("Discord token exchange failed");
-}
-
-    const tokenData = await tokenResponse.json();
-
-    const userResponse = await fetch(
-      "https://discord.com/api/v10/users/@me",
-      {
-        headers: {
-          Authorization: `Bearer ${tokenData.access_token}`
-        }
-      }
-    );
-
-    if (!userResponse.ok) {
-      throw new Error("Discord user lookup failed");
-    }
-
-    const discordUser = await userResponse.json();
-const safeUsername = String(discordUser.username)
-  .replace(/[&<>"']/g, "");
-
-res.type("html").send(`
-  <!DOCTYPE html>
-  <html lang="th">
-  <head>
-    <meta charset="UTF-8">
-    <title>MINBURI ZONE</title>
-  </head>
-  <body>
-    <h2>MINBURI ZONE</h2>
-    <p>ยืนยัน Discord สำเร็จ: ${safeUsername}</p>
-    <p>ขั้นตอนต่อไป: เชื่อมบัญชี Roblox</p>
-   <h3>เชื่อมบัญชี Roblox</h3>
-<p>กรอกรหัสยืนยันที่ได้รับจากเกม Roblox</p>
-
-<form>
-  <input
-    type="text"
-    name="linkCode"
-    placeholder="กรอกรหัส Roblox"
-    required
-  >
-  <button type="button" disabled>
-    ยืนยันการเชื่อมบัญชี (เร็ว ๆ นี้)
-  </button>
-</form>
-  </body>
-  </html>
-`);
-
-  } catch (error) {
-    console.error("OAuth error:", error.message);
-    res.status(500).send("Discord verification failed");
-  }
+    const tokenResp = await fetch('https://discord.com/api/v10/oauth2/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:DISCORD_CLIENT_ID,client_secret:DISCORD_CLIENT_SECRET,grant_type:'authorization_code',code:String(req.query.code),redirect_uri:DISCORD_REDIRECT_URI})});
+    if (!tokenResp.ok) { console.error('Discord OAuth token HTTP',tokenResp.status); return res.status(503).send('Discord temporarily unavailable. Try later.'); }
+    const token = await tokenResp.json();
+    const userResp = await fetch('https://discord.com/api/v10/users/@me',{headers:{Authorization:`Bearer ${token.access_token}`}});
+    if (!userResp.ok) return res.status(503).send('Discord user lookup unavailable.');
+    const user = await userResp.json();
+    if (!codes.has(record.linkCode)) return res.status(400).send('Link expired. Start again.');
+    codes.delete(record.linkCode);
+    linked.set(pending.robloxId,String(user.id));
+    const allowed = await hasRole(String(user.id));
+    res.type('text/plain').send(allowed ? 'MINBURI ZONE: Linked! Whitelist role found. Rejoin Roblox.' : 'MINBURI ZONE: Linked, but whitelist role not found. Ask staff for the role.');
+  } catch(e) { console.error('OAuth failed:',e.message); res.status(503).send('Discord verification temporarily unavailable.'); }
 });
-
-client.once("ready", () => {
-  console.log("Discord Bot Connected");
+app.post('/api/whitelist/check',async(req,res)=>{
+  if (!secretOK(req)) return res.sendStatus(403);
+  const id = Number(req.body?.robloxUserId);
+  if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({allowed:false});
+  const discordId = linked.get(id);
+  if (!discordId) return res.json({allowed:false,reason:'not_linked'});
+  const allowed = await hasRole(discordId);
+  res.json({allowed,reason:allowed?'ok':'role_missing'});
 });
-
-const required = {
-  DISCORD_BOT_TOKEN,
-  DISCORD_CLIENT_ID,
-  DISCORD_CLIENT_SECRET,
-  DISCORD_REDIRECT_URI,
-  ROBLOX_API_SECRET
-};
-
-for (const [key, value] of Object.entries(required)) {
-  if (!value) {
-    console.error("Missing " + key);
-    process.exit(1);
-  }
-}
-
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-  console.log("Backend running on port " + PORT);
-});
-
-client.login(DISCORD_BOT_TOKEN).catch(error => {
-  console.error("Discord login failed:", error.message);
-  process.exit(1);
-});
+const port = process.env.PORT || 3000;
+app.listen(port,()=>console.log('Listening on',port));
+client.once('ready',()=>console.log('Discord bot ready'));
+client.login(DISCORD_BOT_TOKEN).catch(e=>console.error('Discord bot login:',e.message));
