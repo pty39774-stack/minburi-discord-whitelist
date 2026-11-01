@@ -54,7 +54,10 @@ app.get('/auth/discord/callback',async(req,res)=>{
   if (!pending) return res.status(400).send('Link expired. Start again in Roblox.');
   try {
     const tokenResp = await fetch('https://discord.com/api/v10/oauth2/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:DISCORD_CLIENT_ID,client_secret:DISCORD_CLIENT_SECRET,grant_type:'authorization_code',code:String(req.query.code),redirect_uri:DISCORD_REDIRECT_URI})});
-    if (!tokenResp.ok) { console.error('Discord OAuth token HTTP',tokenResp.status); return res.status(503).send('Discord temporarily unavailable. Try later.'); }
+if (!tokenResp.ok) {
+  console.error('Discord OAuth token HTTP', tokenResp.status);
+  console.error('Retry-After:', tokenResp.headers.get('retry-after'));
+  console.error('RateLimit-Reset-After:', tokenResp.headers.get('x-ratelimit-reset-after')); return res.status(503).send('Discord temporarily unavailable. Try later.'); }
     const token = await tokenResp.json();
     const userResp = await fetch('https://discord.com/api/v10/users/@me',{headers:{Authorization:`Bearer ${token.access_token}`}});
     if (!userResp.ok) return res.status(503).send('Discord user lookup unavailable.');
