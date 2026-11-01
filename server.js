@@ -171,7 +171,20 @@ res.type("html").send(`
     <h2>MINBURI ZONE</h2>
     <p>ยืนยัน Discord สำเร็จ: ${safeUsername}</p>
     <p>ขั้นตอนต่อไป: เชื่อมบัญชี Roblox</p>
-    <p>ระบบกรอกรหัสเชื่อมบัญชีกำลังเตรียมใช้งาน</p>
+   <h3>เชื่อมบัญชี Roblox</h3>
+<p>กรอกรหัสยืนยันที่ได้รับจากเกม Roblox</p>
+
+<form>
+  <input
+    type="text"
+    name="linkCode"
+    placeholder="กรอกรหัส Roblox"
+    required
+  >
+  <button type="button" disabled>
+    ยืนยันการเชื่อมบัญชี (เร็ว ๆ นี้)
+  </button>
+</form>
   </body>
   </html>
 `);
