@@ -131,10 +131,13 @@ app.get("/auth/discord/callback", async (req, res) => {
 
 if (!tokenResponse.ok) {
   const errorData = await tokenResponse.json();
-  console.error("Discord OAuth error:", {
-    error: errorData.error,
-    description: errorData.error_description
-  });
+
+  console.error("Discord OAuth HTTP status:", tokenResponse.status);
+  console.error("Discord OAuth error:", JSON.stringify({
+    error: errorData.error ?? errorData.code ?? "unknown",
+    description: errorData.error_description ?? errorData.message ?? "No description"
+  }));
+
   throw new Error("Discord token exchange failed");
 }
 
