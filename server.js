@@ -172,14 +172,7 @@ res.type("html").send(`
   </body>
   </html>
 `);
-    // ยังไม่เชื่อมกับ Roblox ID ในขั้นตอนนี้
-res.send(
-  "Discord verified: " +
-  String(discordUser.username).replace(
-    /[&<>"']/g,
-    ""
-  )
-);
+
   } catch (error) {
     console.error("OAuth error:", error.message);
     res.status(500).send("Discord verification failed");
