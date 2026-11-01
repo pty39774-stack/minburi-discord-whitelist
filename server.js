@@ -51,22 +51,9 @@ app.get("/health", (req, res) => {
     status: "online",
     discordReady: client.isReady()
   });
-});const linkCodes = new Map();
+});
 
-app.post("/api/link/start", (req, res) => {
-  const robloxUserId = Number(req.body?.robloxUserId);
-
-  if (!Number.isSafeInteger(robloxUserId) || robloxUserId <= 0) {
-    return res.status(400).json({ error: "Invalid Roblox User ID" });
-  }
-
-  const code = crypto.randomBytes(16).toString("hex");
-
-  linkCodes.set(code, {
-    robloxUserId,
-    expiresAt: Date.now() + 5 * 60 * 1000
-  });
-  const linkCodes = new Map();
+const linkCodes = new Map();
 
 app.post("/api/link/start", (req, res) => {
   if (req.get("x-api-secret") !== ROBLOX_API_SECRET) {
@@ -76,7 +63,9 @@ app.post("/api/link/start", (req, res) => {
   const robloxUserId = Number(req.body?.robloxUserId);
 
   if (!Number.isSafeInteger(robloxUserId) || robloxUserId <= 0) {
-    return res.status(400).json({ error: "Invalid Roblox User ID" });
+    return res.status(400).json({
+      error: "Invalid Roblox User ID"
+    });
   }
 
   const code = crypto.randomBytes(16).toString("hex");
@@ -86,15 +75,11 @@ app.post("/api/link/start", (req, res) => {
     expiresAt: Date.now() + 5 * 60 * 1000
   });
 
-  res.json({ code, expiresIn: 300 });
-});
-
   res.json({
     code,
     expiresIn: 300
   });
 });
-
 // เริ่มเชื่อมบัญชี Discord
 app.get("/auth/discord", (req, res) => {
   const state = crypto.randomBytes(32).toString("hex");
